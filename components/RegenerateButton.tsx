@@ -10,7 +10,8 @@ export default function RegenerateButton() {
 
     const handleRegenerate = () => {
         setIsSpinning(true);
-        router.refresh();
+        // Force Next.js to bypass the client-side router cache by passing a new timestamp
+        router.replace(`/today?t=${Date.now()}`);
         setTimeout(() => setIsSpinning(false), 1000);
     };
 
