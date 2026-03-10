@@ -1,18 +1,14 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 export default function RegenerateButton() {
-    const router = useRouter();
     const [isSpinning, setIsSpinning] = useState(false);
 
     const handleRegenerate = () => {
         setIsSpinning(true);
-        // Force Next.js to bypass the client-side router cache by passing a new timestamp
-        router.replace(`/today?t=${Date.now()}`);
-        setTimeout(() => setIsSpinning(false), 1000);
+        window.location.reload();
     };
 
     return (
