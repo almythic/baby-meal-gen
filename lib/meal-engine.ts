@@ -103,6 +103,39 @@ function matchesRequirement(
   return true;
 }
 
+function formatIngredientName(name: string): string {
+  return name.replace(/\s*\(.*?\)\s*/g, '').trim();
+}
+
+function generateDynamicTitle(slot: MealSlot, ingredients: GeneratedMeal["ingredients"]): string {
+  const protein = ingredients.find(i => i.category === "protein");
+  const grain = ingredients.find(i => i.category === "grain");
+  const veg = ingredients.find(i => i.category === "vegetable");
+  const fruit = ingredients.find(i => i.category === "fruit");
+
+  const components: string[] = [];
+
+  if (protein) components.push(formatIngredientName(protein.name));
+  else if (fruit) components.push(formatIngredientName(fruit.name));
+
+  if (veg) components.push(formatIngredientName(veg.name));
+  else if (grain) components.push(formatIngredientName(grain.name));
+
+  if (components.length >= 2) {
+    const base = `${components[0]} & ${components[1]}`;
+    if (slot === "breakfast") return `${base} Bowl`;
+    if (slot === "lunch") return `${base} Puree`;
+    if (slot === "dinner") return `${base} Mash`;
+    return `${base} Meal`;
+  }
+
+  if (components.length === 1) {
+    return `${components[0]} Meal`;
+  }
+
+  return "Nourishing Baby Meal";
+}
+
 function scoreIngredient(
   ingredient: Ingredient,
   slot: MealSlot,
@@ -230,7 +263,7 @@ function buildFromTemplate(
   return {
     templateId: template.id,
     slot: template.slot,
-    title: template.title,
+    title: generateDynamicTitle(template.slot, chosen),
     ingredients: chosen,
     totals,
     chartData: {
@@ -331,6 +364,7 @@ export function swapIngredient(params: {
 
   return {
     ...params.meal,
+    title: generateDynamicTitle(params.meal.slot, newIngredientsList),
     ingredients: newIngredientsList,
     totals,
     chartData: {
