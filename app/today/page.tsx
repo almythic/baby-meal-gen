@@ -3,6 +3,8 @@ import { EXTENSIVE_INGREDIENTS, EXTENSIVE_TEMPLATES } from "@/lib/extensive-data
 import RegenerateButton from "@/components/RegenerateButton";
 import MealCard from "@/components/MealCard";
 
+export const dynamic = "force-dynamic";
+
 export default async function TodayPage() {
   const slots: MealSlot[] = ["breakfast", "lunch", "dinner"];
 
