@@ -4,8 +4,13 @@ import RegenerateButton from "@/components/RegenerateButton";
 import MealCard from "@/components/MealCard";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-export default async function TodayPage() {
+export default async function TodayPage({
+  searchParams,
+}: {
+  searchParams: { [key: string]: string | string[] | undefined };
+}) {
   const slots: MealSlot[] = ["breakfast", "lunch", "dinner"];
 
   // Generate a distinct meal for each slot
@@ -20,6 +25,7 @@ export default async function TodayPage() {
 
   return (
     <div className="w-full max-w-5xl mx-auto flex flex-col gap-12 pb-16">
+      {searchParams?.t && <div className="hidden" aria-hidden="true" data-t={searchParams.t} />}
       <header className="text-center p-8 border-b border-indigo-200/50">
         <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-800 to-indigo-600 bg-clip-text text-transparent mb-4">
           Today&apos;s Meal Plan
