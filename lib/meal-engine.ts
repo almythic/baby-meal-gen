@@ -1,5 +1,6 @@
-export type Category = "vegetable" | "protein" | "fruit" | "grain";
+export type Category = "vegetable" | "protein" | "fruit" | "grain" | "fat";
 export type MealSlot = "breakfast" | "lunch" | "dinner";
+export type Flavor = "savory" | "sweet" | "neutral";
 
 export interface Macros {
   calories: number;
@@ -12,6 +13,7 @@ export interface Ingredient {
   id: string;
   name: string;
   category: Category;
+  flavor: Flavor;
   babySafeFromMonths: number;
   macrosPer100g: Macros;
   tags: string[];
@@ -20,6 +22,7 @@ export interface Ingredient {
 export interface TemplateRequirement {
   grams: number;
   category?: Category;
+  flavor?: Flavor;
   anyOfTags?: string[];
   optional?: boolean;
 }
@@ -27,16 +30,19 @@ export interface TemplateRequirement {
 export interface MealTemplate {
   id: string;
   slot: MealSlot;
+  flavorProfile: "savory" | "sweet";
   title: string;
   requirements: TemplateRequirement[];
 }
 
 export interface GeneratedMeal {
+  templateId: string;
   slot: MealSlot;
   title: string;
   ingredients: Array<{
     ingredientId: string;
     name: string;
+    category: Category;
     grams: number;
     macros: Macros;
   }>;
@@ -79,10 +85,17 @@ export function detectMealSlot(at = new Date()): MealSlot {
 function matchesRequirement(
   ingredient: Ingredient,
   req: TemplateRequirement,
-  ageMonths: number
+  ageMonths: number,
+  templateFlavor?: "savory" | "sweet"
 ): boolean {
   if (ingredient.babySafeFromMonths > ageMonths) return false;
+
+  // Prevent mixing sweet and savory
+  if (templateFlavor === "savory" && ingredient.flavor === "sweet") return false;
+  if (templateFlavor === "sweet" && ingredient.flavor === "savory") return false;
+
   if (req.category && ingredient.category !== req.category) return false;
+  if (req.flavor && ingredient.flavor !== req.flavor) return false;
   if (req.anyOfTags && !req.anyOfTags.some((tag) => ingredient.tags.includes(tag))) {
     return false;
   }
@@ -97,6 +110,9 @@ function scoreIngredient(
   alreadyPicked: Ingredient[]
 ): number {
   let score = 0;
+
+  // Add randomness to ensure varying meals on regeneration
+  score += Math.random() * 5;
 
   if (req.category && ingredient.category === req.category) score += 5;
   if (req.anyOfTags?.some((tag) => ingredient.tags.includes(tag))) score += 8;
@@ -148,27 +164,27 @@ function buildBenefits(picked: Ingredient[]): string[] {
   const benefits: string[] = [];
 
   if (tags.has("heme_iron") || tags.has("iron_rich")) {
-    benefits.push("Iron-rich ingredients support growth and healthy blood development.");
+    benefits.push("Includes iron-rich foods essential for your baby's rapid growth and healthy blood development, especially critical after 6 months.");
   }
 
   if ((tags.has("heme_iron") || tags.has("iron_rich")) && tags.has("vitamin_c")) {
-    benefits.push("Vitamin C in this meal helps the body make better use of iron.");
+    benefits.push("Pairs iron with Vitamin C, which significantly enhances the body's ability to absorb iron from plant sources.");
   }
 
   if (tags.has("choline")) {
-    benefits.push("Choline supports brain and nervous-system development.");
+    benefits.push("Provides Choline, a vital nutrient that acts as a building block for the brain and nervous system.");
   }
 
   if (tags.has("beta_carotene")) {
-    benefits.push("Orange vegetables add carotenoid support for vision and immune function.");
+    benefits.push("Features orange vegetables rich in Beta-Carotene, supporting vision development and a strong immune system.");
   }
 
   if (tags.has("beta_carotene") && tags.has("healthy_fat")) {
-    benefits.push("Healthy fat complements the carotenoid-rich vegetables in this meal.");
+    benefits.push("Pairs carotenoids with healthy fats to help your baby's body absorb these important fat-soluble vitamins.");
   }
 
   if (picked.some((i) => i.category === "grain") && picked.some((i) => i.category === "fruit")) {
-    benefits.push("Grain and fruit together provide familiar flavor and steady energy.");
+    benefits.push("Combines whole grains and fruit to provide a familiar flavor profile along with steady, long-lasting energy.");
   }
 
   return benefits;
@@ -186,7 +202,7 @@ function buildFromTemplate(
   for (const req of template.requirements) {
     const candidate = ingredients
       .filter((i) => !used.has(i.id))
-      .filter((i) => matchesRequirement(i, req, ageMonths))
+      .filter((i) => matchesRequirement(i, req, ageMonths, template.flavorProfile))
       .sort(
         (a, b) =>
           scoreIngredient(b, template.slot, req, chosenIngredients) -
@@ -203,6 +219,7 @@ function buildFromTemplate(
     chosen.push({
       ingredientId: candidate.id,
       name: candidate.name,
+      category: candidate.category,
       grams: req.grams,
       macros: scaleMacros(candidate.macrosPer100g, req.grams)
     });
@@ -211,6 +228,7 @@ function buildFromTemplate(
   const totals = chosen.reduce((sum, item) => addMacros(sum, item.macros), ZERO);
 
   return {
+    templateId: template.id,
     slot: template.slot,
     title: template.title,
     ingredients: chosen,
@@ -237,6 +255,13 @@ export function generateMeal(params: {
 
   const options = params.templates
     .filter((t) => t.slot === slot)
+    .filter((t) => {
+      // Enforce: Breakfast and Lunch strictly savory, Dinner strictly sweet
+      if (slot === "breakfast" || slot === "lunch") return t.flavorProfile === "savory";
+      if (slot === "dinner") return t.flavorProfile === "sweet";
+      return true;
+    })
+    .sort(() => Math.random() - 0.5) // Shuffle templates so a completely different meal is picked each time!
     .map((t) => buildFromTemplate(t, params.ingredients, ageMonths))
     .filter((x): x is GeneratedMeal => x !== null);
 
@@ -244,9 +269,76 @@ export function generateMeal(params: {
     throw new Error(`No valid meal could be generated for slot "${slot}"`);
   }
 
-  return options.sort((a, b) => {
-    if (slot === "lunch") return b.totals.protein - a.totals.protein;
-    if (slot === "breakfast") return b.totals.carbs - a.totals.carbs;
-    return a.totals.calories - b.totals.calories;
-  })[0];
+  // Since it was already shuffled, we can just grab the first one that successfully built
+  return options[0];
+}
+
+export function swapIngredient(params: {
+  meal: GeneratedMeal;
+  swapOutId: string;
+  ingredients: Ingredient[];
+  templates: MealTemplate[];
+  ageMonths?: number;
+}): GeneratedMeal {
+  const ageMonths = params.ageMonths ?? 8;
+  const template = params.templates.find(t => t.id === params.meal.templateId);
+  if (!template) throw new Error("Template not found for this meal");
+
+  const itemToSwap = params.meal.ingredients.find(i => i.ingredientId === params.swapOutId);
+  if (!itemToSwap) throw new Error("Ingredient to swap not found in meal");
+
+  const swapOutIng = params.ingredients.find(i => i.id === params.swapOutId);
+  if (!swapOutIng) throw new Error("Original ingredient not found in database");
+
+  // Find which requirement this ingredient likely fulfilled
+  const matchedReq = template.requirements.find(req =>
+    req.grams === itemToSwap.grams && matchesRequirement(swapOutIng, req, ageMonths, template.flavorProfile)
+  );
+
+  if (!matchedReq) {
+    throw new Error("Could not determine which requirement this ingredient fulfilled.");
+  }
+
+  // Find alternatives that are not already in the meal
+  const currentIngredientIds = new Set(params.meal.ingredients.map(i => i.ingredientId));
+  const candidates = params.ingredients
+    .filter(i => !currentIngredientIds.has(i.id))
+    .filter(i => matchesRequirement(i, matchedReq, ageMonths, template.flavorProfile))
+    .sort((a, b) => scoreIngredient(b, template.slot, matchedReq, []) - scoreIngredient(a, template.slot, matchedReq, []));
+
+  if (candidates.length === 0) {
+    throw new Error("No suitable alternative ingredient found.");
+  }
+
+  const replacement = candidates[0]; // best alternative
+
+  // Rebuild the meal with the replacement
+  const newIngredientsList = params.meal.ingredients.map(item => {
+    if (item.ingredientId === params.swapOutId) {
+      return {
+        ingredientId: replacement.id,
+        name: replacement.name,
+        category: replacement.category,
+        grams: matchedReq.grams,
+        macros: scaleMacros(replacement.macrosPer100g, matchedReq.grams)
+      };
+    }
+    return item;
+  });
+
+  const totals = newIngredientsList.reduce((sum, item) => addMacros(sum, item.macros), ZERO);
+  const newFullIngredients = newIngredientsList.map(item => params.ingredients.find(i => i.id === item.ingredientId)!);
+
+  return {
+    ...params.meal,
+    ingredients: newIngredientsList,
+    totals,
+    chartData: {
+      labels: ["Protein", "Carbs", "Fat"],
+      grams: [totals.protein, totals.carbs, totals.fat],
+      caloriesFromMacro: [round(totals.protein * 4), round(totals.carbs * 4), round(totals.fat * 9)],
+      totalCalories: totals.calories
+    },
+    benefits: buildBenefits(newFullIngredients)
+  };
 }
